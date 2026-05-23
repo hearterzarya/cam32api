@@ -13,20 +13,22 @@ This is **not** true MP4 video — it is **JPEG frame playback** at ~5 FPS in th
 ## Project structure
 
 ```
-/api
-  photo.js
-  video-frame.js
-  video-complete.js
-  photos.js
-  photos-latest.js
-  videos.js
-  videos-latest.js
+/app/api
+  photo/route.js
+  video-frame/route.js
+  video-complete/route.js
+  photos/route.js
+  photos-latest/route.js
+  videos/route.js
+  videos-latest/route.js
+  health/route.js
 /lib
-  http.js          # CORS, raw body, JSON helpers
   blob.js          # Blob list/group helpers
+  cors.js          # CORS JSON responses
 /public
   index.html       # Control panel
 package.json
+next.config.mjs
 vercel.json
 .env.example
 server.js          # Legacy local Express server (optional)
@@ -75,8 +77,10 @@ vercel link
 npm run dev
 ```
 
-- Control panel: `http://localhost:3000/` (or the port `vercel dev` prints)
+- Control panel: `http://localhost:3000/`
 - API: `http://localhost:3000/api/photo`, etc.
+
+> **Vercel:** Framework preset must be **Next.js** (set automatically via `vercel.json`).
 
 ### Optional legacy local server
 

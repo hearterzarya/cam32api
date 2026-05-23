@@ -1,13 +1,11 @@
-const { listAllBlobs, toPhotoEntry } = require("../lib/blob");
-const { handleOptions, methodNotAllowed, sendJson } = require("../lib/http");
+import { listAllBlobs, toPhotoEntry } from "../../../lib/blob.js";
+import { corsJson, corsOptions } from "../../../lib/cors.js";
 
-module.exports = async function handler(req, res) {
-  if (handleOptions(req, res)) return;
+export async function OPTIONS() {
+  return corsOptions();
+}
 
-  if (req.method !== "GET") {
-    return methodNotAllowed(res);
-  }
-
+export async function GET() {
   try {
     const blobs = await listAllBlobs("photos/");
     const photos = blobs
@@ -25,13 +23,16 @@ module.exports = async function handler(req, res) {
         }
       : null;
 
-    return sendJson(res, 200, { success: true, photo });
+    return corsJson({ success: true, photo });
   } catch (error) {
     console.error("Get latest photo error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: "Failed to fetch latest photo",
-      details: error.message,
-    });
+    return corsJson(
+      {
+        success: false,
+        error: "Failed to fetch latest photo",
+        details: error.message,
+      },
+      500
+    );
   }
-};
+}

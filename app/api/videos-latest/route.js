@@ -1,18 +1,16 @@
-const {
+import {
   listAllBlobs,
   sessionIdFromPath,
   basename,
   toFrameEntry,
-} = require("../lib/blob");
-const { handleOptions, methodNotAllowed, sendJson } = require("../lib/http");
+} from "../../../lib/blob.js";
+import { corsJson, corsOptions } from "../../../lib/cors.js";
 
-module.exports = async function handler(req, res) {
-  if (handleOptions(req, res)) return;
+export async function OPTIONS() {
+  return corsOptions();
+}
 
-  if (req.method !== "GET") {
-    return methodNotAllowed(res);
-  }
-
+export async function GET() {
   try {
     const blobs = await listAllBlobs("videos/");
     const sessions = new Map();
@@ -43,7 +41,7 @@ module.exports = async function handler(req, res) {
     }
 
     if (sessions.size === 0) {
-      return sendJson(res, 200, {
+      return corsJson({
         success: true,
         sessionId: null,
         frameCount: 0,
@@ -66,7 +64,7 @@ module.exports = async function handler(req, res) {
       return frame;
     });
 
-    return sendJson(res, 200, {
+    return corsJson({
       success: true,
       sessionId: latestSession.sessionId,
       frameCount: frames.length,
@@ -75,10 +73,13 @@ module.exports = async function handler(req, res) {
     });
   } catch (error) {
     console.error("Get latest video error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: "Failed to load latest video frames",
-      details: error.message,
-    });
+    return corsJson(
+      {
+        success: false,
+        error: "Failed to load latest video frames",
+        details: error.message,
+      },
+      500
+    );
   }
-};
+}

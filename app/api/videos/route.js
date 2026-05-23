@@ -1,17 +1,15 @@
-const {
+import {
   listAllBlobs,
   sessionIdFromPath,
   basename,
-} = require("../lib/blob");
-const { handleOptions, methodNotAllowed, sendJson } = require("../lib/http");
+} from "../../../lib/blob.js";
+import { corsJson, corsOptions } from "../../../lib/cors.js";
 
-module.exports = async function handler(req, res) {
-  if (handleOptions(req, res)) return;
+export async function OPTIONS() {
+  return corsOptions();
+}
 
-  if (req.method !== "GET") {
-    return methodNotAllowed(res);
-  }
-
+export async function GET() {
   try {
     const blobs = await listAllBlobs("videos/");
     const sessions = new Map();
@@ -61,17 +59,16 @@ module.exports = async function handler(req, res) {
       .sort((a, b) => b.uploadedAt - a.uploadedAt)
       .map(({ uploadedAt, ...video }) => video);
 
-    return sendJson(res, 200, {
-      success: true,
-      count: videos.length,
-      videos,
-    });
+    return corsJson({ success: true, count: videos.length, videos });
   } catch (error) {
     console.error("Get videos error:", error);
-    return sendJson(res, 500, {
-      success: false,
-      error: "Failed to fetch videos",
-      details: error.message,
-    });
+    return corsJson(
+      {
+        success: false,
+        error: "Failed to fetch videos",
+        details: error.message,
+      },
+      500
+    );
   }
-};
+}
