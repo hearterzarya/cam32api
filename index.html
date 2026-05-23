@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>ESP32-CAM Control Panel</title>
+  <title>ESP32-CAM Vercel Control Panel</title>
 
   <style>
     body {
@@ -21,7 +21,7 @@
 
     .card {
       width: 100%;
-      max-width: 620px;
+      max-width: 680px;
       background: #101c2e;
       padding: 24px;
       border-radius: 18px;
@@ -76,25 +76,11 @@
       cursor: not-allowed;
     }
 
-    .photo {
-      background: #04ada6;
-    }
-
-    .video {
-      background: #7c3aed;
-    }
-
-    .refresh {
-      background: #2563eb;
-    }
-
-    .play {
-      background: #16a34a;
-    }
-
-    .pause {
-      background: #dc2626;
-    }
+    .photo { background: #04ada6; }
+    .video { background: #7c3aed; }
+    .refresh { background: #2563eb; }
+    .play { background: #16a34a; }
+    .pause { background: #dc2626; }
 
     .status {
       margin-top: 18px;
@@ -106,6 +92,8 @@
       word-break: break-word;
       text-align: left;
       white-space: pre-wrap;
+      max-height: 220px;
+      overflow: auto;
     }
 
     .preview-box {
@@ -136,6 +124,7 @@
       font-size: 13px;
       color: #9fb2c8;
       text-align: left;
+      white-space: pre-wrap;
     }
 
     .hint {
@@ -145,15 +134,27 @@
       line-height: 1.5;
       text-align: left;
     }
+
+    .badge {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(4, 173, 166, 0.15);
+      color: #7ff5ef;
+      font-size: 12px;
+      border: 1px solid rgba(4, 173, 166, 0.35);
+    }
   </style>
 </head>
 
 <body>
   <div class="card">
-    <h1>ESP32-CAM Control 📸</h1>
+    <h1>ESP32-CAM Vercel Control 📸</h1>
     <p>Photo capture + 20 sec frame-video playback</p>
+    <div class="badge">Backend: Vercel API</div>
 
-    <label>ESP32-CAM IP</label>
+    <label>ESP32-CAM Local IP</label>
     <input
       id="espIp"
       type="text"
@@ -161,12 +162,12 @@
       placeholder="ESP32 IP e.g. http://192.168.31.246"
     />
 
-    <label>Node.js Server IP</label>
+    <label>Vercel Backend API URL</label>
     <input
       id="nodeIp"
       type="text"
-      value="http://192.168.31.96:3000"
-      placeholder="Node Server e.g. http://192.168.31.96:3000"
+      value="https://cam32api.vercel.app"
+      placeholder="Backend e.g. https://cam32api.vercel.app"
     />
 
     <button class="photo" onclick="capturePhoto()">
@@ -185,13 +186,11 @@
       Load Latest Video
     </button>
 
-    <div class="status" id="status">
-Status: Ready
-    </div>
+    <div class="status" id="status">Status: Ready</div>
 
     <div class="preview-box">
-      <img id="photoPreview" />
-      <img id="videoPreview" />
+      <img id="photoPreview" alt="Latest Photo Preview" />
+      <img id="videoPreview" alt="Video Frame Preview" />
 
       <div class="video-controls">
         <button class="play" onclick="playVideoFrames()">Play Video</button>
@@ -199,12 +198,14 @@ Status: Ready
       </div>
 
       <div class="meta" id="videoMeta">
-        Video: No frames loaded
+Video: No frames loaded
       </div>
     </div>
 
     <div class="hint">
-      Note: ESP32-CAM MP4 video nahi banata. Ye JPEG frames bhejta hai. Ye page un frames ko video jaisa play karta hai.
+      Note: ESP32-CAM MP4 video nahi banata. Ye JPEG frames upload karta hai.
+      Ye page frames ko image sequence ki tarah video jaisa play karta hai.
+      Vercel endpoint: <b>/api/videos-latest</b>
     </div>
   </div>
 
@@ -219,7 +220,6 @@ Status: Ready
     let currentFrameIndex = 0;
     let videoInterval = null;
 
-    // FPS: ESP32 code me 200ms delay hai, approx 5 FPS
     const playbackFPS = 5;
     const frameDelay = 1000 / playbackFPS;
 
@@ -227,12 +227,28 @@ Status: Ready
       return document.getElementById("espIp").value.trim().replace(/\/$/, "");
     }
 
-    function getNodeBaseUrl() {
+    function getBackendBaseUrl() {
       return document.getElementById("nodeIp").value.trim().replace(/\/$/, "");
     }
 
     function showStatus(message) {
       statusBox.innerText = message;
+    }
+
+    function resolveAssetUrl(baseUrl, url) {
+      if (!url) return "";
+
+      // Vercel Blob usually returns full HTTPS URL
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        return url;
+      }
+
+      // Local/static fallback
+      if (url.startsWith("/")) {
+        return `${baseUrl}${url}`;
+      }
+
+      return `${baseUrl}/${url}`;
     }
 
     function showPhoto(url) {
@@ -247,6 +263,27 @@ Status: Ready
       photoPreview.style.display = "none";
     }
 
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+
+      const text = await response.text();
+
+      let data;
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { raw: text };
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status}: ` + JSON.stringify(data)
+        );
+      }
+
+      return data;
+    }
+
     async function capturePhoto() {
       const espUrl = getEspBaseUrl();
 
@@ -258,17 +295,21 @@ Status: Ready
       showStatus("Status: Capturing photo from ESP32-CAM...");
 
       try {
-        const response = await fetch(`${espUrl}/photo`);
-        const data = await response.json();
+        const data = await fetchJson(`${espUrl}/photo`);
 
         showStatus("Photo Trigger Response:\n" + JSON.stringify(data, null, 2));
 
-        setTimeout(loadLatestPhoto, 2500);
+        // Vercel upload may take few seconds
+        setTimeout(loadLatestPhoto, 4000);
       } catch (error) {
         showStatus(
           "Photo Error:\n" +
           error.message +
-          "\n\nCheck ESP32 IP, CORS headers, and same WiFi network."
+          "\n\nFix check:\n" +
+          "1. ESP32 IP same WiFi me ho\n" +
+          "2. ESP32 CORS enabled ho\n" +
+          "3. ESP32 firmware me NODE_SERVER = https://cam32api.vercel.app ho\n" +
+          "4. Browser mixed-content issue: HTTPS page se local HTTP ESP32 call block ho sakta hai. Is case me index.html ko local file/localhost se open karo."
         );
       }
     }
@@ -290,20 +331,18 @@ Status: Ready
       showStatus("Status: Recording 20 sec video frames...");
 
       try {
-        const response = await fetch(`${espUrl}/video20`);
-        const data = await response.json();
+        const data = await fetchJson(`${espUrl}/video20`);
 
         showStatus("Video Trigger Response:\n" + JSON.stringify(data, null, 2));
 
-        // ESP32 returns immediately, but actual upload takes 20 sec.
-        // Wait and then fetch frames.
-        videoMeta.innerText = "Video: Waiting for frames to finish uploading...";
+        videoMeta.innerText = "Video: Waiting for frames to finish uploading to Vercel...";
 
+        // ESP32 returns immediately, upload takes around 20 sec
         setTimeout(async () => {
           await loadLatestVideoFrames();
           playVideoFrames();
           recordBtn.disabled = false;
-        }, 23000);
+        }, 25000);
 
       } catch (error) {
         recordBtn.disabled = false;
@@ -311,73 +350,112 @@ Status: Ready
         showStatus(
           "Video Error:\n" +
           error.message +
-          "\n\nCheck ESP32 IP, CORS headers, and same WiFi network."
+          "\n\nFix check:\n" +
+          "1. ESP32 IP correct hai?\n" +
+          "2. ESP32 and laptop/mobile same network me hain?\n" +
+          "3. ESP32 firmware me Vercel HTTPS upload enabled hai?\n" +
+          "4. Agar page Vercel HTTPS par hosted hai, browser local HTTP ESP32 API ko block kar sakta hai."
         );
       }
     }
 
     async function loadLatestPhoto() {
-      const nodeUrl = getNodeBaseUrl();
+      const backendUrl = getBackendBaseUrl();
 
-      if (!nodeUrl) {
-        showStatus("Status: Please enter Node.js Server IP");
+      if (!backendUrl) {
+        showStatus("Status: Please enter Backend API URL");
         return;
       }
 
-      showStatus("Status: Loading latest photo from Node server...");
+      showStatus("Status: Loading latest photo from Vercel...");
 
       try {
-        const response = await fetch(`${nodeUrl}/api/photos`);
-        const data = await response.json();
+        // Prefer latest endpoint if available
+        let data;
+
+        try {
+          data = await fetchJson(`${backendUrl}/api/photos-latest`);
+
+          if (data.success && data.photo) {
+            const imageUrl = resolveAssetUrl(backendUrl, data.photo.url || data.photo.imageUrl);
+
+            showPhoto(imageUrl);
+            showStatus("Latest photo loaded:\n" + imageUrl);
+            return;
+          }
+        } catch (err) {
+          // fallback to /api/photos
+        }
+
+        data = await fetchJson(`${backendUrl}/api/photos`);
 
         if (!data.success || !data.photos || data.photos.length === 0) {
-          showStatus("No photos found on Node server.");
+          showStatus("No photos found on Vercel backend.");
           return;
         }
 
         const latestPhoto = data.photos[0];
-        const imageUrl = `${nodeUrl}${latestPhoto.url}`;
+        const imageUrl = resolveAssetUrl(backendUrl, latestPhoto.url || latestPhoto.imageUrl);
 
         showPhoto(imageUrl);
 
         showStatus("Latest photo loaded:\n" + imageUrl);
       } catch (error) {
+        const msg = String(error.message || error);
+        if (msg.includes("store does not exist") || msg.includes("BLOB_STORE")) {
+          showStatus(
+            "Blob Store Error (Vercel fix required):\n\n" +
+            "Your BLOB_READ_WRITE_TOKEN points to a deleted/wrong Blob store.\n\n" +
+            "Fix steps:\n" +
+            "1. https://vercel.com → project cam32api → Storage\n" +
+            "2. Create Blob store OR open existing\n" +
+            "3. Connect store → select cam32api\n" +
+            "4. Settings → Environment Variables → remove old BLOB_READ_WRITE_TOKEN if manual\n" +
+            "5. Deployments → Redeploy Production\n\n" +
+            "Then open:\n" + backendUrl + "/api/health\n" +
+            "(blobOk must be true)"
+          );
+          return;
+        }
         showStatus(
           "Load Photo Error:\n" +
-          error.message +
-          "\n\nCheck Node server is running on " +
-          nodeUrl
+          msg +
+          "\n\nCheck Vercel backend:\n" +
+          backendUrl + "/api/photos-latest"
         );
       }
     }
 
     async function loadLatestVideoFrames() {
-      const nodeUrl = getNodeBaseUrl();
+      const backendUrl = getBackendBaseUrl();
 
-      if (!nodeUrl) {
-        showStatus("Status: Please enter Node.js Server IP");
+      if (!backendUrl) {
+        showStatus("Status: Please enter Backend API URL");
         return;
       }
 
-      showStatus("Status: Loading latest video frames from Node server...");
+      showStatus("Status: Loading latest video frames from Vercel...");
 
       try {
-        const response = await fetch(`${nodeUrl}/api/videos/latest`);
-        const data = await response.json();
+        // Vercel route name
+        const data = await fetchJson(`${backendUrl}/api/videos-latest`);
 
         if (!data.success || !data.frames || data.frames.length === 0) {
           videoMeta.innerText = "Video: No frames found.";
-          showStatus("No video frames found on Node server.");
+          showStatus("No video frames found on Vercel backend.");
           return;
         }
 
-        videoFrames = data.frames.map(frame => `${nodeUrl}${frame.url}`);
+        videoFrames = data.frames.map(frame => {
+          return resolveAssetUrl(backendUrl, frame.url || frame.frameUrl);
+        });
+
         currentFrameIndex = 0;
 
         showVideoFrame(videoFrames[0]);
 
         videoMeta.innerText =
-          `Video Loaded: ${data.sessionId}\nFrames: ${videoFrames.length}\nFPS: ${playbackFPS}`;
+          `Video Loaded: ${data.sessionId}\nFrames: ${videoFrames.length}\nFPS: ${data.fps || playbackFPS}`;
 
         showStatus(
           "Latest video frames loaded:\n" +
@@ -389,7 +467,8 @@ Status: Ready
         showStatus(
           "Load Video Error:\n" +
           error.message +
-          "\n\nMake sure Node server has /api/videos/latest endpoint."
+          "\n\nMake sure Vercel has this endpoint:\n" +
+          backendUrl + "/api/videos-latest"
         );
       }
     }

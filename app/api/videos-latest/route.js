@@ -4,6 +4,7 @@ import {
   basename,
   toFrameEntry,
 } from "../../../lib/blob.js";
+import { formatBlobError } from "../../../lib/blob-errors.js";
 import { corsJson, corsOptions } from "../../../lib/cors.js";
 
 export async function OPTIONS() {
@@ -73,6 +74,8 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Get latest video error:", error);
+    const blobErr = formatBlobError(error);
+    if (blobErr) return corsJson(blobErr, 500);
     return corsJson(
       {
         success: false,

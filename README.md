@@ -180,6 +180,27 @@ curl -X POST "https://cam32api.vercel.app/api/photo" \
 curl "https://cam32api.vercel.app/api/photos-latest"
 ```
 
+## Troubleshooting: "This store does not exist"
+
+If `/api/photos` or `/api/photos-latest` returns:
+
+`Vercel Blob: This store does not exist.`
+
+Your `BLOB_READ_WRITE_TOKEN` points to a **deleted or wrong** Blob store. The API code is fine — fix Vercel Storage:
+
+1. Open [Vercel Dashboard](https://vercel.com) → project **cam32api** → **Storage**
+2. **Create** a new Blob store (or open an existing one)
+3. Click **Connect to Project** → select **cam32api**
+4. **Settings** → **Environment Variables**:
+   - If you manually pasted an old `BLOB_READ_WRITE_TOKEN`, **delete** it
+   - Let Vercel inject the token from the connected store
+5. **Deployments** → latest deployment → **Redeploy** (Production)
+6. Verify: open `https://cam32api.vercel.app/api/health`  
+   - `blobOk` must be `true`  
+   - `hasBlobToken` must be `true`
+
+After that, ESP32 uploads and **Load Latest Photo** will work.
+
 ## Limitations
 
 - **No persistent local filesystem on Vercel** — all media must go to **Vercel Blob**.

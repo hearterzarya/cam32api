@@ -3,6 +3,7 @@ import {
   sessionIdFromPath,
   basename,
 } from "../../../lib/blob.js";
+import { formatBlobError } from "../../../lib/blob-errors.js";
 import { corsJson, corsOptions } from "../../../lib/cors.js";
 
 export async function OPTIONS() {
@@ -62,6 +63,8 @@ export async function GET() {
     return corsJson({ success: true, count: videos.length, videos });
   } catch (error) {
     console.error("Get videos error:", error);
+    const blobErr = formatBlobError(error);
+    if (blobErr) return corsJson(blobErr, 500);
     return corsJson(
       {
         success: false,
