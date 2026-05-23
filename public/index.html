@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-CAM Control Panel</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #07111f;
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 620px;
+      background: #101c2e;
+      padding: 24px;
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+      text-align: center;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    p { color: #b8c7d9; font-size: 14px; }
+    label {
+      display: block;
+      text-align: left;
+      margin-top: 14px;
+      color: #d1e7ff;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #2c3d55;
+      background: #07111f;
+      color: white;
+      margin-top: 6px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      margin-top: 12px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      color: white;
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .photo { background: #04ada6; }
+    .video { background: #7c3aed; }
+    .refresh { background: #2563eb; }
+    .play { background: #16a34a; }
+    .pause { background: #dc2626; }
+    .status {
+      margin-top: 18px;
+      padding: 12px;
+      background: #07111f;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #d1e7ff;
+      word-break: break-word;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+    .preview-box {
+      margin-top: 18px;
+      background: #07111f;
+      border: 1px solid #2c3d55;
+      border-radius: 16px;
+      padding: 12px;
+    }
+    img {
+      width: 100%;
+      border-radius: 14px;
+      border: 1px solid #2c3d55;
+      display: none;
+      background: black;
+    }
+    .video-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .meta {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #9fb2c8;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+    .hint {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #93a4b8;
+      line-height: 1.5;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>ESP32-CAM Control</h1>
+    <p>Photo capture + 20 sec JPEG frame playback (Vercel Blob)</p>
+
+    <label>ESP32-CAM IP</label>
+    <input
+      id="espIp"
+      type="text"
+      value="http://192.168.31.246"
+      placeholder="http://192.168.31.246"
+    />
+
+    <label>Backend API URL (Vercel)</label>
+    <input
+      id="apiUrl"
+      type="text"
+      value="https://your-project.vercel.app"
+      placeholder="https://your-project.vercel.app"
+    />
+
+    <button class="photo" onclick="capturePhoto()">Capture Photo</button>
+    <button class="video" id="recordBtn" onclick="recordVideo()">
+      Record 20 Sec Video
+    </button>
+    <button class="refresh" onclick="loadLatestPhoto()">Load Latest Photo</button>
+    <button class="refresh" onclick="loadLatestVideoFrames()">
+      Load Latest Video
+    </button>
+
+    <div class="status" id="status">Status: Ready</div>
+
+    <div class="preview-box">
+      <img id="photoPreview" alt="Latest photo" />
+      <img id="videoPreview" alt="Video frame" />
+      <div class="video-controls">
+        <button class="play" onclick="playVideoFrames()">Play Video</button>
+        <button class="pause" onclick="pauseVideoFrames()">Pause Video</button>
+      </div>
+      <div class="meta" id="videoMeta">Video: No frames loaded</div>
+    </div>
+
+    <div class="hint">
+      ESP32-CAM does not produce MP4. It uploads JPEG frames to Vercel Blob.
+      This page plays those frames at 5 FPS inside an &lt;img&gt; tag.
+      After recording, wait ~23 seconds for uploads to finish.
+    </div>
+  </div>
+
+  <script>
+    const statusBox = document.getElementById("status");
+    const photoPreview = document.getElementById("photoPreview");
+    const videoPreview = document.getElementById("videoPreview");
+    const videoMeta = document.getElementById("videoMeta");
+    const recordBtn = document.getElementById("recordBtn");
+
+    let videoFrames = [];
+    let currentFrameIndex = 0;
+    let videoInterval = null;
+
+    const playbackFPS = 5;
+    const frameDelay = 1000 / playbackFPS;
+
+    function getEspBaseUrl() {
+      return document.getElementById("espIp").value.trim().replace(/\/$/, "");
+    }
+
+    function getApiBaseUrl() {
+      return document.getElementById("apiUrl").value.trim().replace(/\/$/, "");
+    }
+
+    function showStatus(message) {
+      statusBox.textContent = message;
+    }
+
+    function cacheBust(url) {
+      const sep = url.includes("?") ? "&" : "?";
+      return url + sep + "t=" + Date.now();
+    }
+
+    function showPhoto(url) {
+      photoPreview.src = cacheBust(url);
+      photoPreview.style.display = "block";
+      videoPreview.style.display = "none";
+    }
+
+    function showVideoFrame(url) {
+      videoPreview.src = url;
+      videoPreview.style.display = "block";
+      photoPreview.style.display = "none";
+    }
+
+    async function capturePhoto() {
+      const espUrl = getEspBaseUrl();
+      if (!espUrl) {
+        showStatus("Status: Please enter ESP32-CAM IP");
+        return;
+      }
+
+      showStatus("Status: Triggering ESP32-CAM /photo ...");
+
+      try {
+        const response = await fetch(`${espUrl}/photo`);
+        const data = await response.json();
+        showStatus("Photo trigger response:\n" + JSON.stringify(data, null, 2));
+        setTimeout(loadLatestPhoto, 2500);
+      } catch (error) {
+        showStatus(
+          "Photo error:\n" +
+            error.message +
+            "\n\nCheck ESP32 IP, same WiFi, and ESP32 CORS headers."
+        );
+      }
+    }
+
+    async function recordVideo() {
+      const espUrl = getEspBaseUrl();
+      if (!espUrl) {
+        showStatus("Status: Please enter ESP32-CAM IP");
+        return;
+      }
+
+      recordBtn.disabled = true;
+      pauseVideoFrames();
+      videoFrames = [];
+      currentFrameIndex = 0;
+      videoMeta.textContent = "Video: Recording started...";
+      showStatus("Status: Triggering ESP32-CAM /video20 ...");
+
+      try {
+        const response = await fetch(`${espUrl}/video20`);
+        const data = await response.json();
+        showStatus("Video trigger response:\n" + JSON.stringify(data, null, 2));
+        videoMeta.textContent = "Video: Waiting ~23s for frame uploads...";
+
+        setTimeout(async () => {
+          await loadLatestVideoFrames();
+          playVideoFrames();
+          recordBtn.disabled = false;
+        }, 23000);
+      } catch (error) {
+        recordBtn.disabled = false;
+        showStatus(
+          "Video error:\n" +
+            error.message +
+            "\n\nCheck ESP32 IP, same WiFi, and ESP32 CORS headers."
+        );
+      }
+    }
+
+    async function loadLatestPhoto() {
+      const apiUrl = getApiBaseUrl();
+      if (!apiUrl) {
+        showStatus("Status: Please enter Backend API URL");
+        return;
+      }
+
+      showStatus("Status: Fetching /api/photos-latest ...");
+
+      try {
+        const response = await fetch(`${apiUrl}/api/photos-latest`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if (!data.photo) {
+          showStatus("No photos found in Vercel Blob yet.");
+          return;
+        }
+
+        showPhoto(data.photo.url);
+        showStatus(
+          "Latest photo loaded:\n" +
+            data.photo.url +
+            "\nFile: " +
+            data.photo.file
+        );
+      } catch (error) {
+        showStatus(
+          "Load photo error:\n" +
+            error.message +
+            "\n\nCheck API URL and Vercel deployment."
+        );
+      }
+    }
+
+    async function loadLatestVideoFrames() {
+      const apiUrl = getApiBaseUrl();
+      if (!apiUrl) {
+        showStatus("Status: Please enter Backend API URL");
+        return;
+      }
+
+      showStatus("Status: Fetching /api/videos-latest ...");
+
+      try {
+        const response = await fetch(`${apiUrl}/api/videos-latest`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+
+        if (!data.frames || data.frames.length === 0) {
+          videoMeta.textContent = "Video: No frames found.";
+          showStatus("No video frames found in Vercel Blob yet.");
+          return;
+        }
+
+        videoFrames = data.frames.map((frame) => frame.url);
+        currentFrameIndex = 0;
+        showVideoFrame(videoFrames[0]);
+
+        videoMeta.textContent =
+          `Video loaded\nSession: ${data.sessionId}\nFrames: ${videoFrames.length}\nFPS: ${playbackFPS}`;
+
+        showStatus(
+          "Latest video frames loaded:\n" +
+            "Session: " +
+            data.sessionId +
+            "\nFrames: " +
+            videoFrames.length
+        );
+      } catch (error) {
+        showStatus(
+          "Load video error:\n" +
+            error.message +
+            "\n\nCheck API URL and that ESP32 uploaded frames."
+        );
+      }
+    }
+
+    function playVideoFrames() {
+      if (!videoFrames.length) {
+        showStatus("No frames loaded. Click Load Latest Video first.");
+        return;
+      }
+
+      pauseVideoFrames();
+
+      videoInterval = setInterval(() => {
+        if (currentFrameIndex >= videoFrames.length) {
+          currentFrameIndex = 0;
+        }
+        showVideoFrame(videoFrames[currentFrameIndex]);
+        videoMeta.textContent =
+          `Playing frame ${currentFrameIndex + 1} / ${videoFrames.length}`;
+        currentFrameIndex++;
+      }, frameDelay);
+    }
+
+    function pauseVideoFrames() {
+      if (videoInterval) {
+        clearInterval(videoInterval);
+        videoInterval = null;
+      }
+    }
+  </script>
+</body>
+</html>

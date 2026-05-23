@@ -1,0 +1,20 @@
+{
+  "name": "esp32cam-server",
+  "version": "2.0.0",
+  "description": "ESP32-CAM upload API with Vercel Blob storage",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "start:local": "node server.js"
+  },
+  "keywords": ["esp32", "esp32-cam", "vercel", "iot"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@vercel/blob": "^0.27.3"
+  },
+  "devDependencies": {
+    "vercel": "^41.7.0"
+  }
+}
