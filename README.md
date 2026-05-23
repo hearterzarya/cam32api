@@ -1,4 +1,4 @@
-# ESP32-CAM + Vercel Blob Server
+# ESP32-CAM + Vercel Blob Server (cam32api)
 
 Production-ready MVP for an ESP32-CAM that captures photos and 20-second “videos” as JPEG frames, uploads them to **Vercel Blob** via serverless API routes, and plays them back in a browser control panel.
 
