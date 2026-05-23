@@ -4,7 +4,7 @@ const {
   methodNotAllowed,
   readRawBody,
   sendJson,
-} = require("./_lib/http.js");
+} = require("../lib/http");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;

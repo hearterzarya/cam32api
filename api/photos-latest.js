@@ -1,5 +1,5 @@
-const { listAllBlobs, toPhotoEntry } = require("./_lib/blob.js");
-const { handleOptions, methodNotAllowed, sendJson } = require("./_lib/http.js");
+const { listAllBlobs, toPhotoEntry } = require("../lib/blob");
+const { handleOptions, methodNotAllowed, sendJson } = require("../lib/http");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;

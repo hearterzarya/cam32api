@@ -2,8 +2,8 @@ const {
   listAllBlobs,
   sessionIdFromPath,
   basename,
-} = require("./_lib/blob.js");
-const { handleOptions, methodNotAllowed, sendJson } = require("./_lib/http.js");
+} = require("../lib/blob");
+const { handleOptions, methodNotAllowed, sendJson } = require("../lib/http");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
