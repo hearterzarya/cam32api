@@ -1,4 +1,4 @@
-import { list } from "@vercel/blob";
+const { list } = require("@vercel/blob");
 
 const LIST_LIMIT = 1000;
 
@@ -14,8 +14,7 @@ function blobIso(blob) {
   return new Date(t).toISOString();
 }
 
-/** List all blobs under a prefix (paginates until done). */
-export async function listAllBlobs(prefix) {
+async function listAllBlobs(prefix) {
   const blobs = [];
   let cursor;
 
@@ -32,12 +31,12 @@ export async function listAllBlobs(prefix) {
   return blobs;
 }
 
-export function basename(pathname) {
+function basename(pathname) {
   const parts = pathname.split("/").filter(Boolean);
   return parts[parts.length - 1] || pathname;
 }
 
-export function sessionIdFromPath(pathname) {
+function sessionIdFromPath(pathname) {
   const parts = pathname.split("/").filter(Boolean);
   if (parts.length >= 2 && parts[0] === "videos") {
     return parts[1];
@@ -45,7 +44,7 @@ export function sessionIdFromPath(pathname) {
   return null;
 }
 
-export function toPhotoEntry(blob) {
+function toPhotoEntry(blob) {
   const uploadedAt = blobTime(blob);
   return {
     file: basename(blob.pathname),
@@ -56,7 +55,7 @@ export function toPhotoEntry(blob) {
   };
 }
 
-export function toFrameEntry(blob, index) {
+function toFrameEntry(blob, index) {
   const uploadedAt = blobTime(blob);
   return {
     index,
@@ -66,3 +65,11 @@ export function toFrameEntry(blob, index) {
     uploadedAt,
   };
 }
+
+module.exports = {
+  listAllBlobs,
+  basename,
+  sessionIdFromPath,
+  toPhotoEntry,
+  toFrameEntry,
+};

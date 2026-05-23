@@ -2,7 +2,6 @@
   "name": "esp32cam-server",
   "version": "2.0.0",
   "description": "ESP32-CAM upload API with Vercel Blob storage",
-  "type": "module",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod",

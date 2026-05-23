@@ -1,33 +1,31 @@
-import { put } from "@vercel/blob";
-import {
+const { put } = require("@vercel/blob");
+const {
   handleOptions,
-  jsonResponse,
   methodNotAllowed,
   readRawBody,
-} from "../lib/http.js";
+  sendJson,
+} = require("./_lib/http.js");
 
-export default async function handler(request) {
-  const options = handleOptions(request);
-  if (options) return options;
+module.exports = async function handler(req, res) {
+  if (handleOptions(req, res)) return;
 
-  if (request.method !== "POST") {
-    return methodNotAllowed();
+  if (req.method !== "POST") {
+    return methodNotAllowed(res);
   }
 
   try {
-    const body = await readRawBody(request);
+    const body = await readRawBody(req);
 
     if (!body || body.length === 0) {
-      return jsonResponse(400, {
+      return sendJson(res, 400, {
         success: false,
         error: "No frame data received",
       });
     }
 
-    const deviceId = request.headers.get("x-device-id") || "esp32cam";
-    const sessionId =
-      request.headers.get("x-session-id") || `session_${Date.now()}`;
-    const frameNoRaw = request.headers.get("x-frame-no") || "0";
+    const deviceId = req.headers["x-device-id"] || "esp32cam";
+    const sessionId = req.headers["x-session-id"] || `session_${Date.now()}`;
+    const frameNoRaw = req.headers["x-frame-no"] || "0";
     const frameNo = Number(frameNoRaw);
     const paddedFrameNo = String(frameNo).padStart(5, "0");
     const file = `frame_${paddedFrameNo}.jpg`;
@@ -39,7 +37,7 @@ export default async function handler(request) {
       contentType: "image/jpeg",
     });
 
-    return jsonResponse(200, {
+    return sendJson(res, 200, {
       success: true,
       message: "Frame uploaded",
       deviceId,
@@ -51,10 +49,10 @@ export default async function handler(request) {
     });
   } catch (error) {
     console.error("Video frame upload error:", error);
-    return jsonResponse(500, {
+    return sendJson(res, 500, {
       success: false,
       error: "Frame upload failed",
       details: error.message,
     });
   }
-}
+};

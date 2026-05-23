@@ -1,19 +1,23 @@
-import { handleOptions, jsonResponse, methodNotAllowed } from "../lib/http.js";
+const {
+  handleOptions,
+  methodNotAllowed,
+  readJsonBody,
+  sendJson,
+} = require("./_lib/http.js");
 
-export default async function handler(request) {
-  const options = handleOptions(request);
-  if (options) return options;
+module.exports = async function handler(req, res) {
+  if (handleOptions(req, res)) return;
 
-  if (request.method !== "POST") {
-    return methodNotAllowed();
+  if (req.method !== "POST") {
+    return methodNotAllowed(res);
   }
 
   try {
-    const payload = await request.json();
+    const payload = await readJsonBody(req);
     const { deviceId, sessionId, frames } = payload;
 
     if (!sessionId) {
-      return jsonResponse(400, {
+      return sendJson(res, 400, {
         success: false,
         error: "sessionId is required",
       });
@@ -21,14 +25,7 @@ export default async function handler(request) {
 
     const createdAt = new Date().toISOString();
 
-    console.log("Video recording complete:", {
-      deviceId: deviceId || "esp32cam",
-      sessionId,
-      frames,
-      createdAt,
-    });
-
-    return jsonResponse(200, {
+    return sendJson(res, 200, {
       success: true,
       message: "Video recording completed",
       deviceId: deviceId || "esp32cam",
@@ -38,10 +35,10 @@ export default async function handler(request) {
     });
   } catch (error) {
     console.error("Video complete error:", error);
-    return jsonResponse(500, {
+    return sendJson(res, 500, {
       success: false,
       error: "Video complete failed",
       details: error.message,
     });
   }
-}
+};

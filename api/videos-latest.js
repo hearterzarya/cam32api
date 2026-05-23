@@ -1,17 +1,16 @@
-import {
+const {
   listAllBlobs,
   sessionIdFromPath,
   basename,
   toFrameEntry,
-} from "../lib/blob.js";
-import { handleOptions, jsonResponse, methodNotAllowed } from "../lib/http.js";
+} = require("./_lib/blob.js");
+const { handleOptions, methodNotAllowed, sendJson } = require("./_lib/http.js");
 
-export default async function handler(request) {
-  const options = handleOptions(request);
-  if (options) return options;
+module.exports = async function handler(req, res) {
+  if (handleOptions(req, res)) return;
 
-  if (request.method !== "GET") {
-    return methodNotAllowed();
+  if (req.method !== "GET") {
+    return methodNotAllowed(res);
   }
 
   try {
@@ -34,16 +33,17 @@ export default async function handler(request) {
 
       const session = sessions.get(sessionId);
       session.frames.push(blob);
-      const ts = blob.uploadedAt instanceof Date
-        ? blob.uploadedAt.getTime()
-        : new Date(blob.uploadedAt).getTime();
+      const ts =
+        blob.uploadedAt instanceof Date
+          ? blob.uploadedAt.getTime()
+          : new Date(blob.uploadedAt).getTime();
       if (ts > session.latestUploadedAt) {
         session.latestUploadedAt = ts;
       }
     }
 
     if (sessions.size === 0) {
-      return jsonResponse(200, {
+      return sendJson(res, 200, {
         success: true,
         sessionId: null,
         frameCount: 0,
@@ -66,7 +66,7 @@ export default async function handler(request) {
       return frame;
     });
 
-    return jsonResponse(200, {
+    return sendJson(res, 200, {
       success: true,
       sessionId: latestSession.sessionId,
       frameCount: frames.length,
@@ -75,10 +75,10 @@ export default async function handler(request) {
     });
   } catch (error) {
     console.error("Get latest video error:", error);
-    return jsonResponse(500, {
+    return sendJson(res, 500, {
       success: false,
       error: "Failed to load latest video frames",
       details: error.message,
     });
   }
-}
+};

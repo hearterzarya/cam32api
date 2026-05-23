@@ -1,12 +1,11 @@
-import { listAllBlobs, toPhotoEntry } from "../lib/blob.js";
-import { handleOptions, jsonResponse, methodNotAllowed } from "../lib/http.js";
+const { listAllBlobs, toPhotoEntry } = require("./_lib/blob.js");
+const { handleOptions, methodNotAllowed, sendJson } = require("./_lib/http.js");
 
-export default async function handler(request) {
-  const options = handleOptions(request);
-  if (options) return options;
+module.exports = async function handler(req, res) {
+  if (handleOptions(req, res)) return;
 
-  if (request.method !== "GET") {
-    return methodNotAllowed();
+  if (req.method !== "GET") {
+    return methodNotAllowed(res);
   }
 
   try {
@@ -26,16 +25,13 @@ export default async function handler(request) {
         }
       : null;
 
-    return jsonResponse(200, {
-      success: true,
-      photo,
-    });
+    return sendJson(res, 200, { success: true, photo });
   } catch (error) {
     console.error("Get latest photo error:", error);
-    return jsonResponse(500, {
+    return sendJson(res, 500, {
       success: false,
       error: "Failed to fetch latest photo",
       details: error.message,
     });
   }
-}
+};
