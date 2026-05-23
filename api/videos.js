@@ -3,13 +3,14 @@ import {
   sessionIdFromPath,
   basename,
 } from "../lib/blob.js";
-import { handleOptions, methodNotAllowed, sendJson } from "../lib/http.js";
+import { handleOptions, jsonResponse, methodNotAllowed } from "../lib/http.js";
 
-export default async function handler(req, res) {
-  if (handleOptions(req, res)) return;
+export default async function handler(request) {
+  const options = handleOptions(request);
+  if (options) return options;
 
-  if (req.method !== "GET") {
-    return methodNotAllowed(res);
+  if (request.method !== "GET") {
+    return methodNotAllowed();
   }
 
   try {
@@ -32,7 +33,9 @@ export default async function handler(req, res) {
 
       const session = sessions.get(sessionId);
       session.frames.push(blob);
-      const ts = blob.uploadedAt.getTime();
+      const ts = blob.uploadedAt instanceof Date
+        ? blob.uploadedAt.getTime()
+        : new Date(blob.uploadedAt).getTime();
       if (ts > session.latestUploadedAt) {
         session.latestUploadedAt = ts;
       }
@@ -58,14 +61,14 @@ export default async function handler(req, res) {
       .sort((a, b) => b.uploadedAt - a.uploadedAt)
       .map(({ uploadedAt, ...video }) => video);
 
-    return sendJson(res, 200, {
+    return jsonResponse(200, {
       success: true,
       count: videos.length,
       videos,
     });
   } catch (error) {
     console.error("Get videos error:", error);
-    return sendJson(res, 500, {
+    return jsonResponse(500, {
       success: false,
       error: "Failed to fetch videos",
       details: error.message,

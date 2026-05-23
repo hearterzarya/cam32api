@@ -1,35 +1,30 @@
 import { put } from "@vercel/blob";
 import {
   handleOptions,
+  jsonResponse,
   methodNotAllowed,
   readRawBody,
-  sendJson,
 } from "../lib/http.js";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+export default async function handler(request) {
+  const options = handleOptions(request);
+  if (options) return options;
 
-export default async function handler(req, res) {
-  if (handleOptions(req, res)) return;
-
-  if (req.method !== "POST") {
-    return methodNotAllowed(res);
+  if (request.method !== "POST") {
+    return methodNotAllowed();
   }
 
   try {
-    const body = await readRawBody(req);
+    const body = await readRawBody(request);
 
     if (!body || body.length === 0) {
-      return sendJson(res, 400, {
+      return jsonResponse(400, {
         success: false,
         error: "No image data received",
       });
     }
 
-    const deviceId = req.headers["x-device-id"] || "esp32cam";
+    const deviceId = request.headers.get("x-device-id") || "esp32cam";
     const createdAt = new Date().toISOString();
     const timestamp = Date.now();
     const file = `photo_${deviceId}_${timestamp}.jpg`;
@@ -40,7 +35,7 @@ export default async function handler(req, res) {
       contentType: "image/jpeg",
     });
 
-    return sendJson(res, 200, {
+    return jsonResponse(200, {
       success: true,
       message: "Photo uploaded",
       imageUrl: blob.url,
@@ -50,7 +45,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Photo upload error:", error);
-    return sendJson(res, 500, {
+    return jsonResponse(500, {
       success: false,
       error: "Photo upload failed",
       details: error.message,

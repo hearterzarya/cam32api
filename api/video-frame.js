@@ -1,38 +1,33 @@
 import { put } from "@vercel/blob";
 import {
   handleOptions,
+  jsonResponse,
   methodNotAllowed,
   readRawBody,
-  sendJson,
 } from "../lib/http.js";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+export default async function handler(request) {
+  const options = handleOptions(request);
+  if (options) return options;
 
-export default async function handler(req, res) {
-  if (handleOptions(req, res)) return;
-
-  if (req.method !== "POST") {
-    return methodNotAllowed(res);
+  if (request.method !== "POST") {
+    return methodNotAllowed();
   }
 
   try {
-    const body = await readRawBody(req);
+    const body = await readRawBody(request);
 
     if (!body || body.length === 0) {
-      return sendJson(res, 400, {
+      return jsonResponse(400, {
         success: false,
         error: "No frame data received",
       });
     }
 
-    const deviceId = req.headers["x-device-id"] || "esp32cam";
+    const deviceId = request.headers.get("x-device-id") || "esp32cam";
     const sessionId =
-      req.headers["x-session-id"] || `session_${Date.now()}`;
-    const frameNoRaw = req.headers["x-frame-no"] || "0";
+      request.headers.get("x-session-id") || `session_${Date.now()}`;
+    const frameNoRaw = request.headers.get("x-frame-no") || "0";
     const frameNo = Number(frameNoRaw);
     const paddedFrameNo = String(frameNo).padStart(5, "0");
     const file = `frame_${paddedFrameNo}.jpg`;
@@ -44,7 +39,7 @@ export default async function handler(req, res) {
       contentType: "image/jpeg",
     });
 
-    return sendJson(res, 200, {
+    return jsonResponse(200, {
       success: true,
       message: "Frame uploaded",
       deviceId,
@@ -56,7 +51,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Video frame upload error:", error);
-    return sendJson(res, 500, {
+    return jsonResponse(500, {
       success: false,
       error: "Frame upload failed",
       details: error.message,

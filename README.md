@@ -106,8 +106,8 @@ npm run deploy
 
 After deploy:
 
-- **Control panel:** `https://your-project.vercel.app/`
-- **API base:** `https://your-project.vercel.app`
+- **Control panel:** `https://cam32api.vercel.app/`
+- **API base:** `https://cam32api.vercel.app`
 
 Set the **Backend API URL** in the control panel to your deployment URL.
 
@@ -124,7 +124,7 @@ const char* NODE_SERVER = "http://192.168.31.96:3000";
 To Vercel (HTTPS):
 
 ```cpp
-const char* NODE_SERVER = "https://your-project.vercel.app";
+const char* NODE_SERVER = "https://cam32api.vercel.app";
 ```
 
 ### 2. Use HTTPS client for uploads
@@ -158,7 +158,7 @@ Apply the same `WiFiClientSecure` pattern for **video-complete** JSON POST to `/
 ## Testing
 
 1. Deploy API and connect Blob store.
-2. Open `https://your-project.vercel.app/` and set **Backend API URL** to your deployment.
+2. Open `https://cam32api.vercel.app/` and set **Backend API URL** to your deployment.
 3. Set **ESP32-CAM IP** to your camera on WiFi.
 4. Click **Capture Photo** → wait → **Load Latest Photo**.
 5. Click **Record 20 Sec Video** → wait ~23s → frames auto-load and play.
@@ -167,13 +167,13 @@ Apply the same `WiFiClientSecure` pattern for **video-complete** JSON POST to `/
 
 ```bash
 # Upload test JPEG
-curl -X POST "https://your-project.vercel.app/api/photo" \
+curl -X POST "https://cam32api.vercel.app/api/photo" \
   -H "Content-Type: image/jpeg" \
   -H "X-Device-ID: test-device" \
   --data-binary "@test.jpg"
 
 # List photos
-curl "https://your-project.vercel.app/api/photos-latest"
+curl "https://cam32api.vercel.app/api/photos-latest"
 ```
 
 ## Limitations
