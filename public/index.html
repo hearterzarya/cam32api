@@ -170,7 +170,7 @@
       placeholder="Backend e.g. https://cam32api.vercel.app"
     />
 
-    <button class="photo" onclick="capturePhoto()">
+    <button class="photo" id="captureBtn" onclick="capturePhoto()">
       Capture Photo
     </button>
 
@@ -215,13 +215,19 @@ Video: No frames loaded
     const videoPreview = document.getElementById("videoPreview");
     const videoMeta = document.getElementById("videoMeta");
     const recordBtn = document.getElementById("recordBtn");
+    const captureBtn = document.getElementById("captureBtn");
 
     let videoFrames = [];
     let currentFrameIndex = 0;
     let videoInterval = null;
+    let captureInProgress = false;
 
     const playbackFPS = 5;
     const frameDelay = 1000 / playbackFPS;
+    const PHOTO_POLL_MS = 1200;
+    const PHOTO_MAX_WAIT_MS = 50000;
+    const VIDEO_POLL_MS = 2000;
+    const VIDEO_MAX_WAIT_MS = 55000;
 
     function getEspBaseUrl() {
       return document.getElementById("espIp").value.trim().replace(/\/$/, "");
@@ -251,10 +257,71 @@ Video: No frames loaded
       return `${baseUrl}/${url}`;
     }
 
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    function photoKey(photo) {
+      if (!photo) return null;
+      return photo.file || photo.url || photo.createdAt || null;
+    }
+
     function showPhoto(url) {
       photoPreview.src = url + "?t=" + Date.now();
       photoPreview.style.display = "block";
       videoPreview.style.display = "none";
+    }
+
+    function preloadAndShowPhoto(url) {
+      return new Promise((resolve, reject) => {
+        const bust = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
+        const loader = new Image();
+        loader.onload = () => {
+          photoPreview.src = bust;
+          photoPreview.style.display = "block";
+          videoPreview.style.display = "none";
+          resolve();
+        };
+        loader.onerror = () => reject(new Error("Image failed to load"));
+        loader.src = bust;
+      });
+    }
+
+    async function fetchLatestPhotoMeta(backendUrl) {
+      try {
+        const data = await fetchJson(`${backendUrl}/api/photos-latest`);
+        if (data.success && data.photo) return data.photo;
+      } catch {
+        // fallback below
+      }
+
+      const data = await fetchJson(`${backendUrl}/api/photos`);
+      if (data.success && data.photos && data.photos.length > 0) {
+        return data.photos[0];
+      }
+      return null;
+    }
+
+    async function waitForNewPhoto(backendUrl, previousKey) {
+      const started = Date.now();
+
+      while (Date.now() - started < PHOTO_MAX_WAIT_MS) {
+        const photo = await fetchLatestPhotoMeta(backendUrl);
+        const key = photoKey(photo);
+
+        if (photo && key && key !== previousKey) {
+          return photo;
+        }
+
+        const sec = Math.round((Date.now() - started) / 1000);
+        showStatus(
+          "Status: ESP32 upload ho raha hai...\n" +
+          "Vercel se nayi photo wait (" + sec + "s)"
+        );
+        await sleep(PHOTO_POLL_MS);
+      }
+
+      return null;
     }
 
     function showVideoFrame(url) {
@@ -285,22 +352,60 @@ Video: No frames loaded
     }
 
     async function capturePhoto() {
+      if (captureInProgress) return;
+
       const espUrl = getEspBaseUrl();
+      const backendUrl = getBackendBaseUrl();
 
       if (!espUrl) {
         showStatus("Status: Please enter ESP32-CAM IP");
         return;
       }
+      if (!backendUrl) {
+        showStatus("Status: Please enter Vercel Backend API URL");
+        return;
+      }
 
-      showStatus("Status: Capturing photo from ESP32-CAM...");
+      captureInProgress = true;
+      captureBtn.disabled = true;
 
       try {
-        const data = await fetchJson(`${espUrl}/photo`);
+        showStatus("Status: Pehle latest photo snapshot...");
+        const beforePhoto = await fetchLatestPhotoMeta(backendUrl).catch(() => null);
+        const beforeKey = photoKey(beforePhoto);
 
-        showStatus("Photo Trigger Response:\n" + JSON.stringify(data, null, 2));
+        showStatus("Status: ESP32 par /photo trigger...");
+        const data = await fetchJson(`${espUrl}/photo`, {
+          cache: "no-store",
+        });
 
-        // Vercel upload may take few seconds
-        setTimeout(loadLatestPhoto, 4000);
+        showStatus(
+          "ESP32 triggered.\n" +
+          JSON.stringify(data, null, 2) +
+          "\n\nAb Vercel par nayi photo ka wait..."
+        );
+
+        const newPhoto = await waitForNewPhoto(backendUrl, beforeKey);
+
+        if (!newPhoto) {
+          showStatus(
+            "Timeout: 50s me nayi photo nahi mili.\n\n" +
+            "Check:\n" +
+            "1. ESP32 NODE_SERVER = https://cam32api.vercel.app\n" +
+            "2. WiFi same network\n" +
+            "3. /api/health par blobOk true ho\n" +
+            "4. Phir dubara Capture dabayein"
+          );
+          return;
+        }
+
+        const imageUrl = resolveAssetUrl(
+          backendUrl,
+          newPhoto.url || newPhoto.imageUrl
+        );
+
+        await preloadAndShowPhoto(imageUrl);
+        showStatus("Photo captured (single click):\n" + imageUrl);
       } catch (error) {
         showStatus(
           "Photo Error:\n" +
@@ -309,16 +414,24 @@ Video: No frames loaded
           "1. ESP32 IP same WiFi me ho\n" +
           "2. ESP32 CORS enabled ho\n" +
           "3. ESP32 firmware me NODE_SERVER = https://cam32api.vercel.app ho\n" +
-          "4. Browser mixed-content issue: HTTPS page se local HTTP ESP32 call block ho sakta hai. Is case me index.html ko local file/localhost se open karo."
+          "4. Agar ye page https://cam32api.vercel.app se khuli hai, browser local http ESP32 ko block kar sakta hai — is page ko PC par index.html file se open karke try karo."
         );
+      } finally {
+        captureInProgress = false;
+        captureBtn.disabled = false;
       }
     }
 
     async function recordVideo() {
       const espUrl = getEspBaseUrl();
+      const backendUrl = getBackendBaseUrl();
 
       if (!espUrl) {
         showStatus("Status: Please enter ESP32-CAM IP");
+        return;
+      }
+      if (!backendUrl) {
+        showStatus("Status: Please enter Vercel Backend API URL");
         return;
       }
 
@@ -335,14 +448,17 @@ Video: No frames loaded
 
         showStatus("Video Trigger Response:\n" + JSON.stringify(data, null, 2));
 
-        videoMeta.innerText = "Video: Waiting for frames to finish uploading to Vercel...";
+        videoMeta.innerText = "Video: Waiting for frames on Vercel...";
 
-        // ESP32 returns immediately, upload takes around 20 sec
-        setTimeout(async () => {
-          await loadLatestVideoFrames();
+        const beforeVideo = await fetchJson(`${backendUrl}/api/videos-latest`).catch(() => null);
+        const beforeSession = beforeVideo?.sessionId || null;
+        const beforeCount = beforeVideo?.frameCount || 0;
+
+        const ready = await waitForNewVideo(backendUrl, beforeSession, beforeCount);
+        if (ready) {
           playVideoFrames();
-          recordBtn.disabled = false;
-        }, 25000);
+        }
+        recordBtn.disabled = false;
 
       } catch (error) {
         recordBtn.disabled = false;
@@ -359,6 +475,47 @@ Video: No frames loaded
       }
     }
 
+    async function waitForNewVideo(backendUrl, beforeSession, beforeCount) {
+      const started = Date.now();
+
+      while (Date.now() - started < VIDEO_MAX_WAIT_MS) {
+        try {
+          const data = await fetchJson(`${backendUrl}/api/videos-latest`);
+
+          if (
+            data.success &&
+            data.frames &&
+            data.frames.length > 0 &&
+            (data.sessionId !== beforeSession || data.frameCount > beforeCount)
+          ) {
+            videoFrames = data.frames.map((frame) =>
+              resolveAssetUrl(backendUrl, frame.url || frame.frameUrl)
+            );
+            currentFrameIndex = 0;
+            showVideoFrame(videoFrames[0]);
+            videoMeta.innerText =
+              `Video Loaded: ${data.sessionId}\nFrames: ${videoFrames.length}\nFPS: ${data.fps || playbackFPS}`;
+            showStatus(
+              "Latest video ready:\nSession: " +
+                data.sessionId +
+                "\nFrames: " +
+                videoFrames.length
+            );
+            return true;
+          }
+        } catch {
+          // keep polling
+        }
+
+        const sec = Math.round((Date.now() - started) / 1000);
+        videoMeta.innerText = "Video: upload wait... " + sec + "s";
+        await sleep(VIDEO_POLL_MS);
+      }
+
+      showStatus("Video timeout: frames nahi mile. Load Latest Video try karo.");
+      return false;
+    }
+
     async function loadLatestPhoto() {
       const backendUrl = getBackendBaseUrl();
 
@@ -370,35 +527,19 @@ Video: No frames loaded
       showStatus("Status: Loading latest photo from Vercel...");
 
       try {
-        // Prefer latest endpoint if available
-        let data;
+        const latestPhoto = await fetchLatestPhotoMeta(backendUrl);
 
-        try {
-          data = await fetchJson(`${backendUrl}/api/photos-latest`);
-
-          if (data.success && data.photo) {
-            const imageUrl = resolveAssetUrl(backendUrl, data.photo.url || data.photo.imageUrl);
-
-            showPhoto(imageUrl);
-            showStatus("Latest photo loaded:\n" + imageUrl);
-            return;
-          }
-        } catch (err) {
-          // fallback to /api/photos
-        }
-
-        data = await fetchJson(`${backendUrl}/api/photos`);
-
-        if (!data.success || !data.photos || data.photos.length === 0) {
+        if (!latestPhoto) {
           showStatus("No photos found on Vercel backend.");
           return;
         }
 
-        const latestPhoto = data.photos[0];
-        const imageUrl = resolveAssetUrl(backendUrl, latestPhoto.url || latestPhoto.imageUrl);
+        const imageUrl = resolveAssetUrl(
+          backendUrl,
+          latestPhoto.url || latestPhoto.imageUrl
+        );
 
-        showPhoto(imageUrl);
-
+        await preloadAndShowPhoto(imageUrl);
         showStatus("Latest photo loaded:\n" + imageUrl);
       } catch (error) {
         const msg = String(error.message || error);
@@ -501,6 +642,11 @@ Video: No frames loaded
         videoInterval = null;
       }
     }
+
+    // Page open hote hi last photo dikhao (agar hai)
+    window.addEventListener("load", () => {
+      loadLatestPhoto().catch(() => {});
+    });
   </script>
 </body>
 </html>
