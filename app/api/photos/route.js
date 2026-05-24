@@ -1,6 +1,7 @@
 import { listAllBlobs, toPhotoEntry } from "../../../lib/blob.js";
 import { formatBlobError } from "../../../lib/blob-errors.js";
-import { corsJson, corsOptions } from "../../../lib/cors.js";
+import { corsJsonNoCache, corsOptions } from "../../../lib/cors.js";
+import { sortBlobsNewestFirst } from "../../../lib/photos.js";
 
 export async function OPTIONS() {
   return corsOptions();
@@ -9,18 +10,23 @@ export async function OPTIONS() {
 export async function GET() {
   try {
     const blobs = await listAllBlobs("photos/");
-    const photos = blobs
-      .filter((b) => b.pathname.toLowerCase().endsWith(".jpg"))
+    const photos = sortBlobsNewestFirst(
+      blobs.filter((b) => b.pathname.toLowerCase().endsWith(".jpg"))
+    )
       .map(toPhotoEntry)
-      .sort((a, b) => b.uploadedAt - a.uploadedAt)
       .map(({ uploadedAt, ...photo }) => photo);
 
-    return corsJson({ success: true, count: photos.length, photos });
+    return corsJsonNoCache({
+      success: true,
+      count: photos.length,
+      photos,
+      serverTime: Date.now(),
+    });
   } catch (error) {
     console.error("Get photos error:", error);
     const blobErr = formatBlobError(error);
-    if (blobErr) return corsJson(blobErr, 500);
-    return corsJson(
+    if (blobErr) return corsJsonNoCache(blobErr, 500);
+    return corsJsonNoCache(
       {
         success: false,
         error: "Failed to fetch photos",

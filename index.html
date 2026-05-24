@@ -224,8 +224,8 @@ Video: No frames loaded
 
     const playbackFPS = 5;
     const frameDelay = 1000 / playbackFPS;
-    const PHOTO_POLL_MS = 1200;
-    const PHOTO_MAX_WAIT_MS = 50000;
+    const CAPTURE_POLL_MS = 1500;
+    const CAPTURE_POLL_MAX_MS = 20000;
     const VIDEO_POLL_MS = 2000;
     const VIDEO_MAX_WAIT_MS = 55000;
 
@@ -261,9 +261,8 @@ Video: No frames loaded
       return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
-    function photoKey(photo) {
-      if (!photo) return null;
-      return photo.file || photo.url || photo.createdAt || null;
+    function generateCaptureId() {
+      return `cap_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     }
 
     function showPhoto(url) {
@@ -288,37 +287,50 @@ Video: No frames loaded
     }
 
     async function fetchLatestPhotoMeta(backendUrl) {
+      const t = Date.now();
       try {
-        const data = await fetchJson(`${backendUrl}/api/photos-latest`);
+        const data = await fetchJson(
+          `${backendUrl}/api/photos-latest?t=${t}`,
+          { cache: "no-store" }
+        );
         if (data.success && data.photo) return data.photo;
       } catch {
         // fallback below
       }
 
-      const data = await fetchJson(`${backendUrl}/api/photos`);
+      const data = await fetchJson(
+        `${backendUrl}/api/photos?t=${t}`,
+        { cache: "no-store" }
+      );
       if (data.success && data.photos && data.photos.length > 0) {
         return data.photos[0];
       }
       return null;
     }
 
-    async function waitForNewPhoto(backendUrl, previousKey) {
+    async function fetchPhotoByCaptureId(backendUrl, captureId) {
+      const data = await fetchJson(
+        `${backendUrl}/api/photo-by-capture?captureId=${encodeURIComponent(captureId)}&t=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      return data;
+    }
+
+    async function pollPhotoByCaptureId(backendUrl, captureId) {
       const started = Date.now();
 
-      while (Date.now() - started < PHOTO_MAX_WAIT_MS) {
-        const photo = await fetchLatestPhotoMeta(backendUrl);
-        const key = photoKey(photo);
+      while (Date.now() - started < CAPTURE_POLL_MAX_MS) {
+        const data = await fetchPhotoByCaptureId(backendUrl, captureId);
 
-        if (photo && key && key !== previousKey) {
-          return photo;
+        if (data.success && data.found && data.photo?.url) {
+          return data.photo;
         }
 
         const sec = Math.round((Date.now() - started) / 1000);
         showStatus(
-          "Status: ESP32 upload ho raha hai...\n" +
-          "Vercel se nayi photo wait (" + sec + "s)"
+          "Capturing...\nUploading to cloud...\nWaiting for photo (" + sec + "s)"
         );
-        await sleep(PHOTO_POLL_MS);
+        await sleep(CAPTURE_POLL_MS);
       }
 
       return null;
@@ -369,43 +381,41 @@ Video: No frames loaded
       captureInProgress = true;
       captureBtn.disabled = true;
 
+      const captureId = generateCaptureId();
+
       try {
-        showStatus("Status: Pehle latest photo snapshot...");
-        const beforePhoto = await fetchLatestPhotoMeta(backendUrl).catch(() => null);
-        const beforeKey = photoKey(beforePhoto);
+        showStatus("Capturing...\nTriggering ESP32...");
 
-        showStatus("Status: ESP32 par /photo trigger...");
-        const data = await fetchJson(`${espUrl}/photo`, {
-          cache: "no-store",
-        });
-
-        showStatus(
-          "ESP32 triggered.\n" +
-          JSON.stringify(data, null, 2) +
-          "\n\nAb Vercel par nayi photo ka wait..."
+        await fetchJson(
+          `${espUrl}/photo?captureId=${encodeURIComponent(captureId)}`,
+          { cache: "no-store" }
         );
 
-        const newPhoto = await waitForNewPhoto(backendUrl, beforeKey);
+        showStatus("Capturing...\nUploading...\nWaiting for cloud photo...");
 
-        if (!newPhoto) {
+        let photo = await pollPhotoByCaptureId(backendUrl, captureId);
+
+        if (!photo) {
+          showStatus("Still waiting...\nTrying latest photo fallback...");
+          photo = await fetchLatestPhotoMeta(backendUrl);
+        }
+
+        if (!photo?.url && !photo?.imageUrl) {
           showStatus(
-            "Timeout: 50s me nayi photo nahi mili.\n\n" +
-            "Check:\n" +
-            "1. ESP32 NODE_SERVER = https://cam32api.vercel.app\n" +
-            "2. WiFi same network\n" +
-            "3. /api/health par blobOk true ho\n" +
-            "4. Phir dubara Capture dabayein"
+            "Photo not ready yet.\n\n" +
+            "Check ESP32 sends header X-Capture-ID and uploads to Vercel.\n" +
+            "Firmware guide: firmware/ESP32_CAPTURE_ID.md"
           );
           return;
         }
 
         const imageUrl = resolveAssetUrl(
           backendUrl,
-          newPhoto.url || newPhoto.imageUrl
+          photo.url || photo.imageUrl
         );
 
         await preloadAndShowPhoto(imageUrl);
-        showStatus("Photo captured (single click):\n" + imageUrl);
+        showStatus("Photo captured:\n" + imageUrl);
       } catch (error) {
         showStatus(
           "Photo Error:\n" +

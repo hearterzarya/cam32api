@@ -5,7 +5,7 @@ import {
   toFrameEntry,
 } from "../../../lib/blob.js";
 import { formatBlobError } from "../../../lib/blob-errors.js";
-import { corsJson, corsOptions } from "../../../lib/cors.js";
+import { corsJsonNoCache, corsOptions } from "../../../lib/cors.js";
 
 export async function OPTIONS() {
   return corsOptions();
@@ -42,12 +42,13 @@ export async function GET() {
     }
 
     if (sessions.size === 0) {
-      return corsJson({
+      return corsJsonNoCache({
         success: true,
         sessionId: null,
         frameCount: 0,
         fps: 5,
         frames: [],
+        serverTime: Date.now(),
       });
     }
 
@@ -65,18 +66,19 @@ export async function GET() {
       return frame;
     });
 
-    return corsJson({
+    return corsJsonNoCache({
       success: true,
       sessionId: latestSession.sessionId,
       frameCount: frames.length,
       fps: 5,
       frames,
+      serverTime: Date.now(),
     });
   } catch (error) {
     console.error("Get latest video error:", error);
     const blobErr = formatBlobError(error);
-    if (blobErr) return corsJson(blobErr, 500);
-    return corsJson(
+    if (blobErr) return corsJsonNoCache(blobErr, 500);
+    return corsJsonNoCache(
       {
         success: false,
         error: "Failed to load latest video frames",

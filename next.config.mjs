@@ -13,7 +13,7 @@ const nextConfig = {
           {
             key: "Access-Control-Allow-Headers",
             value:
-              "Content-Type, X-Device-ID, X-Type, X-Session-ID, X-Frame-No",
+              "Content-Type, X-Device-ID, X-Capture-ID, X-Type, X-Session-ID, X-Frame-No",
           },
         ],
       },

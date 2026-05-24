@@ -42,7 +42,8 @@ server.js          # Legacy local Express server (optional)
 | POST | `/api/video-frame` | Upload one video frame (headers: `X-Session-ID`, `X-Frame-No`, `X-Device-ID`) |
 | POST | `/api/video-complete` | JSON `{ deviceId, sessionId, frames }` — completion signal |
 | GET | `/api/photos` | List all photos (newest first) |
-| GET | `/api/photos-latest` | Latest photo |
+| GET | `/api/photos-latest` | Latest photo (gallery fallback, no-cache) |
+| GET | `/api/photo-by-capture?captureId=` | Exact photo for one capture session |
 | GET | `/api/videos` | Video sessions grouped by `sessionId` |
 | GET | `/api/videos-latest` | All frames of the latest session |
 
@@ -50,6 +51,7 @@ server.js          # Legacy local Express server (optional)
 
 - `Content-Type: image/jpeg`
 - `X-Device-ID` (optional, default `esp32cam`)
+- `X-Capture-ID` (recommended — links app trigger to uploaded blob)
 - `X-Session-ID` (video frames)
 - `X-Frame-No` (video frames, zero-padded to 5 digits in blob path)
 

@@ -1,6 +1,12 @@
 import { put } from "@vercel/blob";
 import { formatBlobError } from "../../../lib/blob-errors.js";
+import { basename } from "../../../lib/blob.js";
 import { corsJson, corsOptions } from "../../../lib/cors.js";
+import {
+  generateCaptureId,
+  photoPathname,
+  sanitizeId,
+} from "../../../lib/photos.js";
 
 export async function OPTIONS() {
   return corsOptions();
@@ -17,24 +23,47 @@ export async function POST(request) {
       );
     }
 
-    const deviceId = request.headers.get("x-device-id") || "esp32cam";
+    const deviceId = sanitizeId(
+      request.headers.get("x-device-id"),
+      "esp32cam"
+    );
+    const captureId = sanitizeId(
+      request.headers.get("x-capture-id"),
+      generateCaptureId()
+    );
+    const pathname = photoPathname(deviceId, captureId);
     const createdAt = new Date().toISOString();
     const timestamp = Date.now();
-    const file = `photo_${deviceId}_${timestamp}.jpg`;
-    const pathname = `photos/${file}`;
 
     const blob = await put(pathname, body, {
       access: "public",
       contentType: "image/jpeg",
+      addRandomSuffix: false,
+      cacheControlMaxAge: 0,
+    });
+
+    const file = basename(pathname);
+
+    console.log("Photo uploaded", {
+      deviceId,
+      captureId,
+      fileName: pathname,
+      size: body.length,
+      url: blob.url,
+      timestamp,
     });
 
     return corsJson({
       success: true,
       message: "Photo uploaded",
-      imageUrl: blob.url,
-      file,
+      captureId,
       deviceId,
+      imageUrl: blob.url,
+      url: blob.url,
+      file,
+      pathname,
       createdAt,
+      timestamp,
     });
   } catch (error) {
     console.error("Photo upload error:", error);
